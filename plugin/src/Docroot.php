@@ -47,6 +47,36 @@ final class Docroot
         return self::result(false, "{$site->hostname} does not serve files from {$dir} yet (" . implode('; ', $tried) . ').');
     }
 
+    /**
+     * The lines an administrator puts in Admin Level → Custom HTTPD Configurations → <domain>
+     * (top text box) to point this hostname to the live release. That text is inserted into
+     * every VirtualHost of the domain, HTTPS and subdomains included, so the assignment is
+     * limited to the main domain (`!SUB`) or to this one subdomain (`SUB="name"`).
+     *
+     * @param list<string> $domains the user's DirectAdmin domains
+     * @return array{domain:string, sub:?string, snippet:string}|null null when the hostname
+     *         no longer belongs to one of the domains, or the path cannot be written as a token
+     */
+    public static function httpdRule(Site $site, array $domains): ?array
+    {
+        $owner = Domains::owner($site->hostname, $domains);
+        $path = $site->docrootPath();
+        // A token value ends at "|", "`" marks a token inside it, and it cannot span lines.
+        if ($owner === null || $path === '' || preg_match('/[|`\r\n]/', $path) === 1) {
+            return null;
+        }
+        $sub = $owner === $site->hostname ? null : substr($site->hostname, 0, -strlen($owner) - 1);
+        if ($sub === 'www') {
+            $sub = null; // DirectAdmin serves www.<domain> from the domain's own VirtualHost.
+        }
+        $condition = $sub === null ? '|*if !SUB|' : '|*if SUB="' . $sub . '"|';
+        return [
+            'domain' => $owner,
+            'sub' => $sub,
+            'snippet' => $condition . "\n|?DOCROOT=" . $path . "|\n|*endif|",
+        ];
+    }
+
     /** @return array{0:int,1:string,2:string} */
     private static function fetch(string $url): array
     {

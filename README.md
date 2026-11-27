@@ -6,6 +6,7 @@ Forge-style zero-downtime deployments from GitHub, managed by DirectAdmin users 
 - **Production sites** follow GitHub Releases. When a new release is published (not a draft or a pre-release), its tag is deployed.
 - Every app runs from `current`, a symlink to a directory in `releases/`. A deploy builds the new release next to the running one. The symlink switches only after the whole deploy script has succeeded. If a step fails, the release is thrown away and the site keeps running.
 - Rollback to any retained release, deploy a specific release or commit, edit the shared `.env`, and follow a live deploy log.
+- Read the app's own Laravel logs (`storage/logs/*.log` of the live release) and follow new lines as they are written. The plugin only reads them.
 - Admins get an overview of every site plus global settings and per-user access.
 - A Vue interface that keeps you informed: deployments are followed live from *queued* to *live* with a running log, every action shows what it is doing and how it went, and destructive actions ask first.
 
@@ -28,7 +29,7 @@ bin/runner.php (as the user), per site:
 The interface is a Vue 3 app (`ui/`, built into `plugin/images/app.js` and `app.css`). Every page (`user/*.html`, `admin/index.html`) returns the same small shell with boot data; the app then talks to a JSON API at `user/api.raw` and `admin/api.raw`, which DirectAdmin runs as the logged-in user and the logged-in admin's own account (for example `admin`) respectively:
 
 ```
-GET  api.raw?action=overview|site|site_form|refs|env|log|settings|csrf
+GET  api.raw?action=overview|site|site_form|refs|env|log|app_log|settings|csrf
 POST api.raw?action=save_site|check_repo|deploy|deploy_ref|rollback|cancel_queue|…   body: csrf=…&payload=<base64url JSON>
 ```
 
@@ -46,7 +47,32 @@ Root never runs user code and never reads files the user controls. It only check
 └── current -> releases/2611241430
 ```
 
-**The plugin does not touch `public_html`.** After the first deploy, the user sets the domain's document root in DirectAdmin to `<base>/current/<web dir>`, for example `~/domains/example.com/current/public`. If the domain has a separate `private_html`, its SSL document root needs the same change. The site page shows the exact path and has a **Check document root** button. The check places a one-time file in `current/public` and requests it over HTTPS (falling back to HTTP).
+**The plugin does not touch `public_html`.** After the first deploy, the domain's document root in DirectAdmin must point to `<base>/current/<web dir>`, for example `~/domains/example.com/current/public`. The site page shows the exact path and has a **Check document root** button. The check places a one-time file in `current/public` and requests it over HTTPS (falling back to HTTP).
+
+#### Changing the document root
+
+The site page also shows the lines for this, ready to copy, with the site's own path. An administrator pastes them into **Admin Level → Custom HTTPD Configurations → *domain* → httpd.conf**, in the top text box (the `|CUSTOM|` token), and saves. That text goes into every VirtualHost of the domain, so one rule covers HTTP and HTTPS (`private_html`). The `|*if ...|` line limits it to the site's hostname.
+
+For a domain (`example.com`), the rule leaves the domain's subdomains alone:
+
+```
+|*if !SUB|
+|?DOCROOT=/home/alice/domains/example.com/current/public|
+|*endif|
+```
+
+For a subdomain (`app.example.com`), the rule goes in the configuration of the parent domain `example.com`, and the subdomain must exist in DirectAdmin:
+
+```
+|*if SUB="app"|
+|?DOCROOT=/home/alice/domains/example.com/apps/app/current/public|
+|*endif|
+```
+
+- On DirectAdmin 1.61 or newer, the user can set a subdomain's document root without an administrator: **Sub-Domains Setup**, then the pencil icon next to the subdomain.
+- If the server runs nginx, paste the same lines into **nginx.conf** on the Custom HTTPD Configurations page as well.
+- Do not edit `/etc/httpd/conf/httpd.conf` directly. CustomBuild overwrites it.
+- If the change does not show up, queue a rewrite as root: `echo "action=rewrite&value=httpd" >> /usr/local/directadmin/data/task.queue`. DirectAdmin picks it up within a minute.
 
 ### Deploy pipeline
 
@@ -167,7 +193,7 @@ The DirectAdmin documentation says plugin scripts run as *"the DirectAdmin/UNIX 
 
 New versions come from GitHub through DirectAdmin's own Plugin Manager. `plugin.conf` points `version_url` and `update_url` at the `dist` branch of this repository, which always holds the latest stable release.
 
-1. **Admin → Plugin Manager** shows when a newer version is available. DirectAdmin caches the check, so a new release can take about 30 minutes to appear.
+1. **Admin → Plugin Manager** shows when a newer version is available. DirectAdmin caches the check, so a new release can take about 30 minutes to appear. To check right away, restart the server, which has worked. `systemctl restart directadmin` probably does the same, but that is untested. GitHub serves the files with up to 5 minutes of caching, so give a new release a few minutes either way.
 2. Press **Update**. DirectAdmin downloads the package, unpacks it over the plugin folder and runs `scripts/update.sh` as root, which runs `install.sh` again.
 3. Open **Admin → Laravel Github deploy**. The version next to *Administration* should be the new one, and the *Diagnostics* card should be green.
 
@@ -189,7 +215,7 @@ New versions come from GitHub through DirectAdmin's own Plugin Manager. `plugin.
    - When you save, the plugin checks that the token can read the repository and, for testing sites, that the branch exists.
 3. The first deployment starts within a minute.
 4. **Edit .env:** fill in `shared/.env`, for example `APP_KEY` and the database settings, then press **Deploy now**.
-5. Change the document root as shown on the site page, then press **Check document root**.
+5. Change the document root as shown on the site page (see [Changing the document root](#changing-the-document-root)), then press **Check document root**.
 6. From then on:
    - **Testing:** push to the branch. The commit is deployed within about 5 minutes.
    - **Production:** publish a release on GitHub. It is deployed within about 5 minutes.

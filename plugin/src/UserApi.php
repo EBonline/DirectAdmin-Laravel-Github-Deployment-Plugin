@@ -13,6 +13,8 @@ final class UserApi extends JsonApi
     public const ENV_MAX = 65536;
     private const LOG_TAIL = 512 * 1024;
     private const LOG_CHUNK = 256 * 1024;
+    private const APP_LOG_PATTERN = '/^[A-Za-z0-9._-]{1,200}\.log$/';
+    private const APP_LOG_FILES = 100;
 
     private Sites $sites;
     private Credentials $creds;
@@ -38,6 +40,7 @@ final class UserApi extends JsonApi
             'refs' => fn (): array => $this->refs(),
             'env' => fn (): array => $this->envFile(),
             'log' => fn (): array => $this->log(),
+            'app_log' => fn (): array => $this->appLog(),
             'settings' => fn (): array => $this->settingsData(),
         ];
     }
@@ -98,6 +101,7 @@ final class UserApi extends JsonApi
             'env_shared' => in_array('.env', $site->sharedPaths, true),
             'env_exists' => is_file($site->sharedDir() . '/.env'),
             'has_token' => $this->creds->tokenFor($site->id) !== null,
+            'docroot_rule' => Docroot::httpdRule($site, Domains::forHome($this->ud->home)),
         ];
     }
 
@@ -187,10 +191,7 @@ final class UserApi extends JsonApi
         ];
     }
 
-    /**
-     * A deployment log. Without `offset`, the last 512 KB (starting at a line boundary);
-     * with `offset`, what was appended since (at most 256 KB, cut at a line boundary).
-     */
+    /** A deployment log: the tail without `offset`, what was appended since with it (see tailChunk()). */
     private function log(): array
     {
         $site = $this->site($this->req->query('site'));
@@ -204,9 +205,92 @@ final class UserApi extends JsonApi
                 break;
             }
         }
+        return [
+            'site' => ['id' => $site->id, 'hostname' => $site->hostname, 'environment' => $site->environment],
+            'entry' => $entry,
+            'running' => ($state['running']['id'] ?? null) === $id,
+        ] + $this->tailChunk($file, $this->req->query('offset'));
+    }
+
+    /**
+     * The Laravel logs of the live release (storage/logs/*.log; storage is usually a shared
+     * path, so this is shared/storage/logs). Read-only. Without `file`, the newest log file;
+     * `offset` works as for deployment logs.
+     */
+    private function appLog(): array
+    {
+        $site = $this->site($this->req->query('site'));
+        $dir = $site->currentPath() . '/storage/logs';
+        $real = is_dir($dir) ? realpath($dir) : false;
+        $files = $real !== false ? self::logFiles($real) : [];
+
+        $name = $this->req->query('file');
+        $chosen = null;
+        if ($name !== '') {
+            foreach ($files as $f) {
+                if ($f['name'] === $name) {
+                    $chosen = $f;
+                    break;
+                }
+            }
+            if ($chosen === null) {
+                throw new ApiError(404, 'no_log_file', 'That log file no longer exists. Laravel may have rotated or removed it.');
+            }
+            if (!$chosen['readable']) {
+                throw new ApiError(403, 'unreadable', "Your account cannot read {$name}. It was probably written by another user, such as the web server; change its owner or permissions over SSH.");
+            }
+        } else {
+            foreach ($files as $f) {
+                if ($f['readable']) {
+                    $chosen = $f;
+                    break;
+                }
+            }
+        }
+
+        $tail = $chosen !== null
+            ? $this->tailChunk($real . '/' . $chosen['name'], $this->req->query('offset'))
+            : ['chunk' => '', 'offset' => 0, 'more' => false, 'truncated' => false, 'reset' => false, 'size' => 0];
+        return [
+            'site' => ['id' => $site->id, 'hostname' => $site->hostname, 'environment' => $site->environment],
+            'dir' => $real !== false ? $real : $dir,
+            'exists' => $real !== false,
+            'files' => $files,
+            'file' => $chosen['name'] ?? null,
+        ] + $tail;
+    }
+
+    /** @return list<array{name:string,size:int,modified_at:int,readable:bool}> newest first, at most 100 */
+    private static function logFiles(string $dir): array
+    {
+        $files = [];
+        foreach (scandir($dir) ?: [] as $name) {
+            $path = $dir . '/' . $name;
+            if (preg_match(self::APP_LOG_PATTERN, $name) !== 1 || !is_file($path)) {
+                continue;
+            }
+            $files[] = [
+                'name' => $name,
+                'size' => (int) @filesize($path),
+                'modified_at' => (int) @filemtime($path),
+                'readable' => is_readable($path),
+            ];
+        }
+        usort($files, static fn (array $a, array $b): int => [$b['modified_at'], $a['name']] <=> [$a['modified_at'], $b['name']]);
+        return array_slice($files, 0, self::APP_LOG_FILES);
+    }
+
+    /**
+     * A piece of a growing text file. Without an offset, the last 512 KB (starting at a line
+     * boundary); with one, what was appended since (at most 256 KB, cut at a line boundary).
+     * An offset past the end (the file was truncated or replaced) starts over.
+     *
+     * @return array{chunk:string,offset:int,more:bool,truncated:bool,reset:bool,size:int}
+     */
+    private function tailChunk(string $file, string $offsetParam): array
+    {
         clearstatcache(true, $file);
         $size = is_file($file) ? (int) filesize($file) : 0;
-        $offsetParam = $this->req->query('offset');
         $initial = $offsetParam === '';
         $reset = false;
         if ($initial) {
@@ -230,14 +314,12 @@ final class UserApi extends JsonApi
             $chunk = substr($chunk, 0, $nl + 1);
         }
         return [
-            'site' => ['id' => $site->id, 'hostname' => $site->hostname, 'environment' => $site->environment],
-            'entry' => $entry,
             'chunk' => $chunk,
             'offset' => $start + strlen($chunk),
             'more' => $more,
             'truncated' => $truncated,
             'reset' => $reset,
-            'running' => ($state['running']['id'] ?? null) === $id,
+            'size' => $size,
         ];
     }
 

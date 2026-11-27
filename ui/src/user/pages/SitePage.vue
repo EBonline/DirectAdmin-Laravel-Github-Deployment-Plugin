@@ -122,6 +122,7 @@ function repoUrl(repo: string): string {
       <template #actions>
         <UpdatedAt :at="r.updatedAt.value" :loading="r.loading.value" />
         <RouterLink class="gd-btn" :to="{ name: 'env', query: { site: id } }"><Icon name="file" />Edit .env</RouterLink>
+        <RouterLink class="gd-btn" :to="{ name: 'app-log', query: { site: id } }"><Icon name="terminal" />Laravel logs</RouterLink>
         <RouterLink class="gd-btn" :to="{ name: 'edit', query: { site: id } }"><Icon name="settings" />Site settings</RouterLink>
       </template>
     </PageHeader>
@@ -187,7 +188,29 @@ function repoUrl(repo: string): string {
               <strong>{{ d.site.hostname }}</strong> to:
             </p>
             <CopyField :text="d.site.docroot_path" label="document root path" />
-            <p class="gd-hint">
+            <template v-if="d.docroot_rule">
+              <p>
+                A DirectAdmin administrator does this in <strong>Admin Level → Custom HTTPD Configurations →
+                {{ d.docroot_rule.domain }} → httpd.conf</strong>, by pasting these lines into the top text box and saving.
+                They set the document root for HTTP and HTTPS.
+              </p>
+              <CopyField :text="d.docroot_rule.snippet" label="Custom HTTPD Configurations lines" multiline />
+              <p class="gd-hint">
+                <template v-if="d.docroot_rule.sub">
+                  The subdomain <strong>{{ d.docroot_rule.sub }}</strong> must exist in DirectAdmin. The first line limits
+                  the change to {{ d.site.hostname }}, so {{ d.docroot_rule.domain }} and its other subdomains keep their
+                  document root. On DirectAdmin 1.61 or newer you can also set it yourself, without an administrator:
+                  <strong>Sub-Domains Setup</strong>, then the pencil icon next to {{ d.docroot_rule.sub }}.
+                </template>
+                <template v-else>
+                  The first line keeps the subdomains of {{ d.docroot_rule.domain }} on their own document root.
+                </template>
+                If the server runs nginx, paste the same lines into <strong>nginx.conf</strong> on that page as well.
+                If you are not an administrator, send these lines to your hosting administrator.
+                <template v-if="!d.current_id">The path exists after the first successful deployment.</template>
+              </p>
+            </template>
+            <p v-else class="gd-hint">
               If the domain has a separate SSL document root (<code>private_html</code>), change that one to the same path.
               If you cannot change the document root yourself, ask your hosting administrator.
               <template v-if="!d.current_id">The path exists after the first successful deployment.</template>

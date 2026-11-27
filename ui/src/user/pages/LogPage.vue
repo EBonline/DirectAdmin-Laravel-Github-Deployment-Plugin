@@ -80,6 +80,6 @@ watch(stream.running, (running, was) => {
       The site keeps serving the current release until this one is ready. You can leave this page; the deployment continues.
     </Alert>
 
-    <LogView :site-id="siteId" :log-id="logId" :stream="stream" />
+    <LogView :stream="stream" :filename="`${siteId}-${logId}.log`" />
   </template>
 </template>

@@ -250,6 +250,8 @@ html.gd-framed body { background: transparent; color: var(--gd-text); }
 .gd-step-title { font-weight: 600; }
 .gd-copy { display: flex; gap: 8px; align-items: center; margin: 6px 0 10px; flex-wrap: wrap; }
 .gd-copy code { font-size: 13.5px; padding: 6px 10px; }
+.gd-copy-block { align-items: flex-start; }
+.gd-copy-block code { white-space: pre; word-break: normal; overflow-x: auto; max-width: 100%; }
 
 /* ------------------------------------------------------------ empty / error / skeleton */
 .gd-empty { text-align: center; padding: 40px 16px; }

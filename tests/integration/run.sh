@@ -366,6 +366,8 @@ assert_contains "$OUT" '"hostname":"example.test"' "overview lists the productio
 assert_eq "$(jget "$OUT" ok)" true "responses carry ok:true"
 OUT=$(api site "site=test-example-test")
 assert_eq "$(jget "$OUT" site.docroot_path)" "$TB/current/public" "exact document root path is provided"
+assert_eq "$(jget "$OUT" docroot_rule.domain)" "example.test" "the httpd rule for a subdomain goes in the parent domain"
+assert_eq "$(jget "$OUT" docroot_rule.snippet)" "|*if SUB=\"test\"|"$'\n'"|?DOCROOT=$TB/current/public|"$'\n'"|*endif|" "the httpd rule sets the document root of that subdomain only"
 assert_contains "$OUT" '"current":false,"can_activate":true' "older releases can be rolled back"
 assert_contains "$(api site "site=nope")" "HTTP/1.1 404" "unknown sites are a 404"
 OUT=$(api site_form "site=test-example-test")
@@ -441,6 +443,26 @@ assert_eq "$(cat "$TB/shared/.env")" $'APP_KEY=base64:abc+/=\nDB=x & ü' ".env e
 assert_eq "$(jget "$(api env "site=test-example-test")" content)" $'APP_KEY=base64:abc+/=\nDB=x & ü' ".env is read back unchanged"
 BIG=$("$PHP" -r 'echo json_encode(["site" => "test-example-test", "content" => str_repeat("x", 70000)]);')
 assert_contains "$(api save_env "" "$BIG")" "too large" "oversized .env files are refused"
+LOGS=$TB/shared/storage/logs
+printf '[2026-11-26 10:00:00] testing.INFO: yesterday\n' > "$LOGS/laravel-2026-11-26.log"
+touch -d '1 hour ago' "$LOGS/laravel-2026-11-26.log"
+printf '[2026-11-27 10:00:00] testing.INFO: one\n[2026-11-27 10:00:01] testing.ERROR: two\n' > "$LOGS/laravel.log"
+OUT=$(api app_log "site=test-example-test")
+assert_eq "$(jget "$OUT" dir)" "$(cd "$LOGS" && pwd -P)" "Laravel logs are read from the live release's storage/logs (shared/)"
+assert_eq "$(jget "$OUT" files.0.name),$(jget "$OUT" files.1.name),$(jget "$OUT" files.2.name)" "laravel.log,laravel-2026-11-26.log,null" "only *.log files are listed, newest first"
+assert_eq "$(jget "$OUT" file)" laravel.log "without a file, the newest log is shown"
+assert_eq "$(jget "$OUT" chunk)" $'[2026-11-27 10:00:00] testing.INFO: one\n[2026-11-27 10:00:01] testing.ERROR: two' "its tail is returned"
+printf '[2026-11-27 10:00:02] testing.INFO: three\n' >> "$LOGS/laravel.log"
+OUT=$(api app_log "site=test-example-test&file=laravel.log&offset=$(jget "$OUT" offset)")
+assert_eq "$(jget "$OUT" chunk)" '[2026-11-27 10:00:02] testing.INFO: three' "following a Laravel log returns only the new lines"
+assert_eq "$(jget "$(api app_log "site=test-example-test&file=laravel-2026-11-26.log")" chunk)" '[2026-11-26 10:00:00] testing.INFO: yesterday' "an older log file can be chosen"
+assert_contains "$(api app_log "site=test-example-test&file=../../.env")" '"code":"no_log_file"' "paths outside storage/logs are refused"
+assert_contains "$(api app_log "site=test-example-test&file=.gitignore")" '"code":"no_log_file"' "files other than *.log are refused"
+mv "$LOGS" "$LOGS.away"
+OUT=$(api app_log "site=test-example-test")
+assert_eq "$(jget "$OUT" exists),$(jget "$OUT" files),$(jget "$OUT" file)" "false,[],null" "a missing storage/logs is reported, not an error"
+mv "$LOGS.away" "$LOGS"
+assert_eq "$(cat "$LOGS/laravel.log" | wc -l | tr -d ' ')" 3 "reading Laravel logs leaves them untouched"
 OUT=$(api delete_site "" '{"site":"other-test","confirm":"wrong"}')
 assert_contains "$OUT" '"confirm":"Type other.test to confirm."' "removing a site requires typing its name"
 mkdir -p "$T/plugin-data/access" && echo deny > "$T/plugin-data/access/$ME"

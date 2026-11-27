@@ -123,6 +123,16 @@ export interface SiteDetail extends SiteStatus {
   env_shared: boolean
   env_exists: boolean
   has_token: boolean
+  docroot_rule: DocrootRule | null
+}
+
+/** Custom HTTPD Configurations lines that set the document root (Docroot::httpdRule). */
+export interface DocrootRule {
+  /** The DirectAdmin domain whose configuration takes the lines. */
+  domain: string
+  /** The subdomain label when the site is on a subdomain of that domain. */
+  sub: string | null
+  snippet: string
 }
 
 export interface Overview {
@@ -197,15 +207,43 @@ export interface EnvFile {
   max_bytes: number
 }
 
-export interface LogChunk {
+/** A piece of a growing log file (UserApi::tailChunk). */
+export interface TailChunk {
+  chunk: string
+  /** Where the next request continues. */
+  offset: number
+  /** More was appended than one answer carries; ask again right away. */
+  more: boolean
+  /** The first answer starts somewhere in the file, not at its beginning. */
+  truncated: boolean
+  /** The file became shorter (truncated or replaced): `chunk` starts over. */
+  reset: boolean
+  size: number
+}
+
+export interface LogChunk extends TailChunk {
   site: Pick<Site, 'id' | 'hostname' | 'environment'>
   entry: HistoryEntry | null
-  chunk: string
-  offset: number
-  more: boolean
-  truncated: boolean
-  reset: boolean
   running: boolean
+}
+
+/** A file in the live release's storage/logs. */
+export interface AppLogFile {
+  name: string
+  size: number
+  modified_at: number
+  readable: boolean
+}
+
+export interface AppLogChunk extends TailChunk {
+  site: Pick<Site, 'id' | 'hostname' | 'environment'>
+  /** storage/logs of the live release, resolved (usually <base>/shared/storage/logs). */
+  dir: string
+  exists: boolean
+  /** Newest first. */
+  files: AppLogFile[]
+  /** The file this chunk is from; null when there is no readable log file. */
+  file: string | null
 }
 
 export interface UserSettings {
