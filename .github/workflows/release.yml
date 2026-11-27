@@ -87,6 +87,10 @@ jobs:
             echo "::error::plugin.conf in the package does not say version=$VERSION."
             exit 1
           fi
+          if [ "$(tar -xOzf "dist/$PACKAGE" ./VERSION)" != "$VERSION" ]; then
+            echo "::error::VERSION in the package does not say $VERSION."
+            exit 1
+          fi
           if ! printf '%s\n' "$conf" | grep -q '^update_url=https://'; then
             echo "::error::plugin.conf in the package has no update_url, so servers could not update from it."
             exit 1
