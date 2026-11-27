@@ -1,0 +1,11 @@
+/dist/
+/vendor/
+/plugin/data/
+/plugin/bin/composer.phar
+/.phpunit.cache/
+/.phpunit.result.cache
+/ui/node_modules/
+# Built from ui/ by build.sh (npm run build)
+/plugin/images/app.js
+/plugin/images/app.css
+/plugin/images/*.map

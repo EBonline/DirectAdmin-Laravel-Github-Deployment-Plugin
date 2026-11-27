@@ -1,0 +1,23 @@
+{
+    "name": "laravel-github-deploy/directadmin-plugin",
+    "description": "Forge-style zero-downtime GitHub deployments for DirectAdmin users",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "GitDeploy\\Tests\\": "tests/unit/"
+        }
+    },
+    "scripts": {
+        "test": [
+            "phpunit",
+            "tests/integration/run.sh"
+        ]
+    }
+}
