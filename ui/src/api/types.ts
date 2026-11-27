@@ -123,6 +123,16 @@ export interface SiteDetail extends SiteStatus {
   env_shared: boolean
   env_exists: boolean
   has_token: boolean
+  docroot_rule: DocrootRule | null
+}
+
+/** Custom HTTPD Configurations lines that set the document root (Docroot::httpdRule). */
+export interface DocrootRule {
+  /** The DirectAdmin domain whose configuration takes the lines. */
+  domain: string
+  /** The subdomain label when the site is on a subdomain of that domain. */
+  sub: string | null
+  snippet: string
 }
 
 export interface Overview {

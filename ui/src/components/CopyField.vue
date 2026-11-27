@@ -3,7 +3,8 @@ import { ref } from 'vue'
 import { toasts } from '../composables/toasts'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ text: string; label?: string }>()
+/** `multiline` keeps the line breaks of `text`, for snippets that are pasted as a block. */
+const props = defineProps<{ text: string; label?: string; multiline?: boolean }>()
 const copied = ref(false)
 let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -38,7 +39,7 @@ async function copy(): Promise<void> {
 </script>
 
 <template>
-  <div class="gd-copy">
+  <div class="gd-copy" :class="{ 'gd-copy-block': multiline }">
     <code>{{ text }}</code>
     <button type="button" class="gd-btn gd-btn-sm" :aria-label="`Copy ${label ?? text}`" @click="copy">
       <Icon :name="copied ? 'check' : 'copy'" />

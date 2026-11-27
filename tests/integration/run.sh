@@ -366,6 +366,8 @@ assert_contains "$OUT" '"hostname":"example.test"' "overview lists the productio
 assert_eq "$(jget "$OUT" ok)" true "responses carry ok:true"
 OUT=$(api site "site=test-example-test")
 assert_eq "$(jget "$OUT" site.docroot_path)" "$TB/current/public" "exact document root path is provided"
+assert_eq "$(jget "$OUT" docroot_rule.domain)" "example.test" "the httpd rule for a subdomain goes in the parent domain"
+assert_eq "$(jget "$OUT" docroot_rule.snippet)" "|*if SUB=\"test\"|"$'\n'"|?DOCROOT=$TB/current/public|"$'\n'"|*endif|" "the httpd rule sets the document root of that subdomain only"
 assert_contains "$OUT" '"current":false,"can_activate":true' "older releases can be rolled back"
 assert_contains "$(api site "site=nope")" "HTTP/1.1 404" "unknown sites are a 404"
 OUT=$(api site_form "site=test-example-test")

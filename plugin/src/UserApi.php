@@ -98,6 +98,7 @@ final class UserApi extends JsonApi
             'env_shared' => in_array('.env', $site->sharedPaths, true),
             'env_exists' => is_file($site->sharedDir() . '/.env'),
             'has_token' => $this->creds->tokenFor($site->id) !== null,
+            'docroot_rule' => Docroot::httpdRule($site, Domains::forHome($this->ud->home)),
         ];
     }
 
