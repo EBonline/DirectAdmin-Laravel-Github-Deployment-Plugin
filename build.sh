@@ -35,6 +35,9 @@ trap 'rm -rf "$STAGE"' EXIT
 
 # Copy everything except runtime data and local artefacts.
 tar -C plugin --exclude='./data' --exclude='./bin/composer.phar' --exclude='*.swp' --exclude='*.map' -cf - . | tar -C "$STAGE" -xf -
+# The plugin reads its version from here: DirectAdmin rewrites plugin.conf when it adds the
+# plugin (diradmin, mode 0600), and admin pages cannot read that.
+printf '%s\n' "$VERSION" > "$STAGE/VERSION"
 find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE" -type f -exec chmod 644 {} +
 chmod 755 "$STAGE"/user/* "$STAGE"/admin/* "$STAGE"/scripts/*.sh

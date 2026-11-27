@@ -110,7 +110,21 @@ final class Env
 
     public function version(): string
     {
-        $conf = @file_get_contents($this->pluginDir . '/plugin.conf');
+        return self::readVersion($this->pluginDir);
+    }
+
+    /**
+     * The package's VERSION file (written by build.sh), else version= in plugin.conf (a
+     * checkout). DirectAdmin rewrites plugin.conf when it adds a plugin, as diradmin with
+     * mode 0600, so the admin account that admin pages run as cannot read it.
+     */
+    public static function readVersion(string $pluginDir): string
+    {
+        $file = @file_get_contents($pluginDir . '/VERSION');
+        if (is_string($file) && preg_match('/^[0-9A-Za-z.+-]+$/', trim($file)) === 1) {
+            return trim($file);
+        }
+        $conf = @file_get_contents($pluginDir . '/plugin.conf');
         if (is_string($conf) && preg_match('/^version=(.+)$/m', $conf, $m) === 1) {
             return trim($m[1]);
         }

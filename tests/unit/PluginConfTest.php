@@ -33,6 +33,24 @@ final class PluginConfTest extends TestCase
         self::assertSame($conf['version'], Env::detect()->version());
     }
 
+    public function testVersionComesFromTheVersionFileBeforePluginConf(): void
+    {
+        $dir = $this->tmp;
+        self::assertSame('unknown', Env::readVersion($dir));
+
+        file_put_contents("$dir/plugin.conf", "id=x\nversion=1.2.3\nactive=yes\n");
+        self::assertSame('1.2.3', Env::readVersion($dir), 'a checkout has no VERSION file');
+
+        file_put_contents("$dir/VERSION", "1.2.4\n");
+        self::assertSame('1.2.4', Env::readVersion($dir), 'the package VERSION wins');
+
+        unlink("$dir/plugin.conf"); // as when DirectAdmin's rewritten plugin.conf is unreadable
+        self::assertSame('1.2.4', Env::readVersion($dir));
+
+        file_put_contents("$dir/VERSION", "<script>\n");
+        self::assertSame('unknown', Env::readVersion($dir), 'only a version-shaped VERSION is used');
+    }
+
     public function testUpdatesComeFromTheDistBranchWithoutRedirects(): void
     {
         $conf = self::conf();
