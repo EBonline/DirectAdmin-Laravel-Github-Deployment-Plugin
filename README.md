@@ -117,13 +117,21 @@ Forge aliases are also exported, so Forge scripts work unchanged: `FORGE_RELEASE
 
 ## Installing
 
+In DirectAdmin go to **Admin → Plugin Manager → Add plugin** and add the latest release from this URL:
+
+```
+https://raw.githubusercontent.com/EBonline/DirectAdmin-Laravel-Github-Deployment-Plugin/refs/heads/dist/laravel_github_deploy.tar.gz
+```
+
+Then install and activate it. The Plugin Manager asks for your admin login password. Servers installed this way can be updated from the Plugin Manager (see *Updating*).
+
+Instead of the URL, you can upload `laravel_github_deploy.tar.gz` from a [GitHub release](https://github.com/EBonline/DirectAdmin-Laravel-Github-Deployment-Plugin/releases), or build it yourself:
+
 ```bash
 ./build.sh                      # → dist/laravel_github_deploy.tar.gz
 ```
 
 Building needs Node.js 22 or newer for the interface (`ui/`). The DirectAdmin server only needs Node.js for apps whose deploy script builds frontend assets (see *Requirements*). `SKIP_UI_BUILD=1 ./build.sh` packages interface files that are already built.
-
-In DirectAdmin go to **Admin → Plugin Manager → Add plugin**, upload `dist/laravel_github_deploy.tar.gz`, then install and activate it. The Plugin Manager asks for your admin login password.
 
 Upload the file under exactly that name. The Plugin Manager can name the plugin folder, and therefore its URLs, after the uploaded file. The plugin works from any folder name, but `laravel_github_deploy.tar.gz` gives the expected `/CMD_PLUGINS/laravel_github_deploy`.
 
@@ -154,6 +162,18 @@ The DirectAdmin documentation says plugin scripts run as *"the DirectAdmin/UNIX 
 2. **User → Laravel Github deploy:** the page loads. If it says *"Plugin scripts run as …"*, DirectAdmin is not running user scripts as the user.
 3. Save a deploy script that contains `&`, `<`, quotes and `$`, then reopen the site settings. It must be unchanged. If saving shows *"The request arrived without its data"*, DirectAdmin is not passing POST data to `api.raw`.
 4. Press **Deploy now**. The site page shows *Queued*, then *Deploying* with a running timer and the end of the log, and a notification when it is done. While deploying, the log page follows the output every 1.5 seconds.
+
+## Updating
+
+New versions come from GitHub through DirectAdmin's own Plugin Manager. `plugin.conf` points `version_url` and `update_url` at the `dist` branch of this repository, which always holds the latest stable release.
+
+1. **Admin → Plugin Manager** shows when a newer version is available. DirectAdmin caches the check, so a new release can take about 30 minutes to appear.
+2. Press **Update**. DirectAdmin downloads the package, unpacks it over the plugin folder and runs `scripts/update.sh` as root, which runs `install.sh` again.
+3. Open **Admin → Laravel Github deploy**. The version next to *Administration* should be the new one, and the *Diagnostics* card should be green.
+
+`data/` (settings and access overrides), users' sites and `~/.laravel-github-deploy` folders, and the cron job are kept. Update while no deployment is running: the files are replaced underneath any plugin process that is running at that moment.
+
+**Versions without update URLs.** Version 0.2.0 and older shipped with empty update URLs, so the Plugin Manager cannot update them. Install the next release by hand once: upload its `laravel_github_deploy.tar.gz` from the [releases page](https://github.com/EBonline/DirectAdmin-Laravel-Github-Deployment-Plugin/releases), or add it from the URL under *Installing*. After that, the Plugin Manager can update it.
 
 ## Using it (DirectAdmin user)
 
@@ -259,3 +279,27 @@ The integration test runs the real runner, helper, dispatcher, worker and UI scr
 - rollback without redeploy, deploying a chosen commit, and auto-deploy off;
 - concurrent runs, recovery of interrupted deploys, and the dispatcher chain;
 - the JSON API: CSRF, entity-encoded and missing POST data, byte-exact scripts and `.env` files, field errors, busy conflicts, the repository check, the document-root check, access overrides and the admin settings.
+
+### Releasing
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is pushed:
+
+```bash
+# on main, with everything merged
+sed -i 's/^version=.*/version=0.3.0/' plugin/plugin.conf
+(cd ui && npm version 0.3.0 --no-git-tag-version)       # keeps ui/package.json in step
+git commit -am "Release 0.3.0"
+git tag v0.3.0
+git push origin main v0.3.0
+```
+
+The workflow:
+
+1. checks that the tag is `v` + `version=` from `plugin/plugin.conf`, and that a stable version is tagged on `main`;
+2. runs the PHP unit and integration tests and the interface checks and tests, then builds the package with `build.sh`;
+3. creates the GitHub release with `laravel_github_deploy.tar.gz` and its `.sha256` attached. If the release was already created in the GitHub interface, the files are added to it;
+4. for stable versions, replaces the `dist` branch with the package and a `version.txt`. Servers check that branch, so this is the step that offers the update to them. It never publishes a version older than the one already on `dist`.
+
+A version with a `-`, such as `0.3.0-rc.1` (tag `v0.3.0-rc.1`), becomes a GitHub pre-release only. It can be tagged on any branch and is not offered to servers; to try it, upload its package by hand.
+
+The `dist` branch is managed by the workflow and holds a single commit. Do not commit to it.

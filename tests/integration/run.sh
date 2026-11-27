@@ -459,6 +459,7 @@ section "Installed under a different folder name"
 ALT=$T/plugins/laravel_github_deploy-0.1.0
 mkdir -p "$T/plugins" && cp -r "$PLUGIN" "$ALT"
 sed -i "s#/usr/local/bin/php#$PHP#" "$ALT"/user/* "$ALT"/admin/*
+chmod 755 "$ALT"/user/* "$ALT"/admin/* # as install.sh does; the checkout may not carry the exec bits
 HTML=$(cd / && QUERY_STRING= POST= USERNAME=$ME "$ALT/user/index.html")
 assert_contains "$HTML" '"base":"/CMD_PLUGINS/laravel_github_deploy-0.1.0"' "user pages know the actual folder name"
 assert_contains "$HTML" '"api":"/CMD_PLUGINS/laravel_github_deploy-0.1.0/api.raw"' "the app calls the API in the actual folder"

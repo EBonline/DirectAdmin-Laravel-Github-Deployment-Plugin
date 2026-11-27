@@ -1,0 +1,151 @@
+# Builds and publishes a release when a tag vX.Y.Z is pushed. The tag must match version= in
+# plugin/plugin.conf.
+#
+# Every tag becomes a GitHub release with the package attached. Stable versions (no "-" in the
+# version) must be tagged on main, and are also published to the `dist` branch. DirectAdmin's
+# Plugin Manager reads that branch through version_url and update_url in plugin.conf.
+# raw.githubusercontent.com serves those files directly; release asset URLs redirect, and
+# DirectAdmin's plugin downloader does not follow redirects.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.ref_name }}
+      PACKAGE: laravel_github_deploy.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the version
+        run: |
+          VERSION=$(sed -n 's/^version=//p' plugin/plugin.conf)
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG does not match version=$VERSION in plugin/plugin.conf. Bump the version first, or tag v$VERSION."
+            exit 1
+          fi
+          case "$VERSION" in *-*) PRERELEASE=1 ;; *) PRERELEASE=0 ;; esac
+          COMMIT=$(git rev-parse 'HEAD^{commit}')
+          if [ "$PRERELEASE" = 0 ]; then
+            git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+              echo "::error::$TAG is not on main. Servers are only offered releases from main: merge to main and tag there, or use a pre-release version such as $VERSION-rc.1."
+              exit 1
+            fi
+          fi
+          {
+            echo "VERSION=$VERSION"
+            echo "PRERELEASE=$PRERELEASE"
+            echo "COMMIT=$COMMIT"
+          } >> "$GITHUB_ENV"
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, posix
+          tools: composer
+          coverage: none
+
+      - name: PHP tests
+        run: |
+          composer install --no-interaction --no-progress
+          vendor/bin/phpunit
+          tests/integration/run.sh
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Interface tests and build
+        working-directory: ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Package
+        run: |
+          SKIP_UI_BUILD=1 ./build.sh
+          conf=$(tar -xOzf "dist/$PACKAGE" ./plugin.conf)
+          if ! printf '%s\n' "$conf" | grep -qx "version=$VERSION"; then
+            echo "::error::plugin.conf in the package does not say version=$VERSION."
+            exit 1
+          fi
+          if ! printf '%s\n' "$conf" | grep -q '^update_url=https://'; then
+            echo "::error::plugin.conf in the package has no update_url, so servers could not update from it."
+            exit 1
+          fi
+          (cd dist && sha256sum "$PACKAGE" > "$PACKAGE.sha256")
+          cat "dist/$PACKAGE.sha256"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Created in the GitHub interface: attach the package to it.
+            gh release upload "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" --clobber
+          else
+            flags=
+            if [ "$PRERELEASE" = 1 ]; then flags=--prerelease; fi
+            gh release create "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" \
+              --title "$VERSION" --generate-notes --verify-tag $flags
+          fi
+
+      - name: Publish to the dist branch
+        if: env.PRERELEASE == '0'
+        run: |
+          # Never offer servers an older version than the one already published (for example
+          # when an old tag's run is re-run).
+          current=
+          if git fetch --no-tags --quiet origin +refs/heads/dist:refs/remotes/origin/dist 2>/dev/null; then
+            current=$(git show origin/dist:version.txt 2>/dev/null || true)
+          fi
+          if [ -n "$current" ] && [ "$current" != "$VERSION" ] \
+            && [ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n 1)" = "$current" ]; then
+            echo "::notice::The dist branch already offers $current, which is newer than $VERSION. Not publishing."
+            exit 0
+          fi
+
+          # One commit without history, replaced on every release, so the repository does
+          # not grow by a package per release. version.txt has no trailing newline: DirectAdmin
+          # compares it with version= in plugin.conf as a plain string.
+          out=$RUNNER_TEMP/dist-branch
+          mkdir -p "$out"
+          printf '%s' "$VERSION" > "$out/version.txt"
+          cat > "$out/README.md" <<EOF
+          # Laravel Github deploy: update channel
+
+          Published by the Release workflow from \`$TAG\` (commit \`$COMMIT\`). Do not commit here:
+          every stable release replaces this branch.
+
+          DirectAdmin's Plugin Manager reads \`version.txt\` (\`version_url\` in plugin.conf) and
+          downloads \`$PACKAGE\` (\`update_url\`) from this branch.
+          EOF
+          tree=$(
+            for f in "dist/$PACKAGE" "dist/$PACKAGE.sha256" "$out/version.txt" "$out/README.md"; do
+              printf '100644 blob %s\t%s\n' "$(git hash-object -w "$f")" "$(basename "$f")"
+            done | git mktree
+          )
+          export GIT_AUTHOR_NAME='github-actions[bot]' GIT_COMMITTER_NAME='github-actions[bot]'
+          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
+          export GIT_COMMITTER_EMAIL=$GIT_AUTHOR_EMAIL
+          commit=$(git commit-tree "$tree" -m "Release $VERSION" -m "Built from $TAG ($COMMIT).")
+          git push --force origin "$commit:refs/heads/dist"
+          echo "::notice::Servers are now offered $VERSION."
