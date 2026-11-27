@@ -282,23 +282,33 @@ The integration test runs the real runner, helper, dispatcher, worker and UI scr
 
 ### Releasing
 
-Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is pushed:
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a version tag is pushed. Bump the version and get it onto `main` (directly or through a pull request):
 
 ```bash
-# on main, with everything merged
-sed -i 's/^version=.*/version=0.3.0/' plugin/plugin.conf
-(cd ui && npm version 0.3.0 --no-git-tag-version)       # keeps ui/package.json in step
-git commit -am "Release 0.3.0"
-git tag v0.3.0
-git push origin main v0.3.0
+V=0.3.1
+sed -i "s/^version=.*/version=$V/" plugin/plugin.conf
+(cd ui && npm version "$V" --no-git-tag-version)       # keeps ui/package.json in step
+git commit -am "Release $V"
 ```
+
+Then tag the commit on `main` and push only the tag:
+
+```bash
+git checkout main && git pull
+git tag "v$V"
+git push origin "v$V"
+```
+
+**Do not create or publish the release in the GitHub interface.** This repository has immutable releases: once a release is published, no files can be attached to it, and its tag can never be reused, not even after the release is deleted. A release published by hand therefore stays without the package. The workflow creates the release itself, as a draft that it publishes once the package is attached. You can edit the title and notes afterwards.
 
 The workflow:
 
 1. checks that the tag is `v` + `version=` from `plugin/plugin.conf`, and that a stable version is tagged on `main`;
 2. runs the PHP unit and integration tests and the interface checks and tests, then builds the package with `build.sh`;
-3. creates the GitHub release with `laravel_github_deploy.tar.gz` and its `.sha256` attached. If the release was already created in the GitHub interface, the files are added to it;
+3. creates the GitHub release with `laravel_github_deploy.tar.gz` and its `.sha256` attached and generated notes. A draft release that already exists for the tag gets the files and stays a draft for you to publish. A release that was already published only gets a warning;
 4. for stable versions, replaces the `dist` branch with the package and a `version.txt`. Servers check that branch, so this is the step that offers the update to them. It never publishes a version older than the one already on `dist`.
+
+If a run fails after the release was published, fix the cause and release the next patch version: the tag cannot be used again.
 
 A version with a `-`, such as `0.3.0-rc.1` (tag `v0.3.0-rc.1`), becomes a GitHub pre-release only. It can be tagged on any branch and is not offered to servers; to try it, upload its package by hand.
 

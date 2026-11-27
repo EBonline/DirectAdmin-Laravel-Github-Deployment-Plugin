@@ -98,15 +98,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # Created in the GitHub interface: attach the package to it.
-            gh release upload "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" --clobber
-          else
-            flags=
-            if [ "$PRERELEASE" = 1 ]; then flags=--prerelease; fi
-            gh release create "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" \
-              --title "$VERSION" --generate-notes --verify-tag $flags
-          fi
+          # The repository has immutable releases: once a release is published, files can no
+          # longer be attached to it. `gh release create` publishes only after the upload.
+          state=$(gh release view "$TAG" --json isDraft,isImmutable \
+            --jq 'if .isDraft then "draft" elif .isImmutable then "immutable" else "published" end' 2>/dev/null || echo none)
+          case "$state" in
+            none)
+              flags=
+              if [ "$PRERELEASE" = 1 ]; then flags=--prerelease; fi
+              gh release create "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" \
+                --title "$VERSION" --generate-notes --verify-tag $flags
+              ;;
+            immutable)
+              # Published in the GitHub interface before this run: servers still get the
+              # update from the dist branch below, but the release page stays without it.
+              echo "::warning::Release $TAG was published before this workflow could attach the package, and published releases are immutable. Release by pushing the tag only; the workflow creates the release."
+              ;;
+            *)
+              # A draft (left for you to publish), or a mutable published release.
+              gh release upload "$TAG" "dist/$PACKAGE" "dist/$PACKAGE.sha256" --clobber
+              ;;
+          esac
 
       - name: Publish to the dist branch
         if: env.PRERELEASE == '0'
