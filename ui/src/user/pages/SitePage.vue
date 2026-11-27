@@ -122,6 +122,7 @@ function repoUrl(repo: string): string {
       <template #actions>
         <UpdatedAt :at="r.updatedAt.value" :loading="r.loading.value" />
         <RouterLink class="gd-btn" :to="{ name: 'env', query: { site: id } }"><Icon name="file" />Edit .env</RouterLink>
+        <RouterLink class="gd-btn" :to="{ name: 'app-log', query: { site: id } }"><Icon name="terminal" />Laravel logs</RouterLink>
         <RouterLink class="gd-btn" :to="{ name: 'edit', query: { site: id } }"><Icon name="settings" />Site settings</RouterLink>
       </template>
     </PageHeader>

@@ -6,6 +6,7 @@ Forge-style zero-downtime deployments from GitHub, managed by DirectAdmin users 
 - **Production sites** follow GitHub Releases. When a new release is published (not a draft or a pre-release), its tag is deployed.
 - Every app runs from `current`, a symlink to a directory in `releases/`. A deploy builds the new release next to the running one. The symlink switches only after the whole deploy script has succeeded. If a step fails, the release is thrown away and the site keeps running.
 - Rollback to any retained release, deploy a specific release or commit, edit the shared `.env`, and follow a live deploy log.
+- Read the app's own Laravel logs (`storage/logs/*.log` of the live release) and follow new lines as they are written. The plugin only reads them.
 - Admins get an overview of every site plus global settings and per-user access.
 - A Vue interface that keeps you informed: deployments are followed live from *queued* to *live* with a running log, every action shows what it is doing and how it went, and destructive actions ask first.
 
@@ -28,7 +29,7 @@ bin/runner.php (as the user), per site:
 The interface is a Vue 3 app (`ui/`, built into `plugin/images/app.js` and `app.css`). Every page (`user/*.html`, `admin/index.html`) returns the same small shell with boot data; the app then talks to a JSON API at `user/api.raw` and `admin/api.raw`, which DirectAdmin runs as the logged-in user and the logged-in admin's own account (for example `admin`) respectively:
 
 ```
-GET  api.raw?action=overview|site|site_form|refs|env|log|settings|csrf
+GET  api.raw?action=overview|site|site_form|refs|env|log|app_log|settings|csrf
 POST api.raw?action=save_site|check_repo|deploy|deploy_ref|rollback|cancel_queue|…   body: csrf=…&payload=<base64url JSON>
 ```
 

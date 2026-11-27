@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type Router } from 'vue-router'
+import AppLogPage from './pages/AppLogPage.vue'
 import DeployRefPage from './pages/DeployRefPage.vue'
 import EnvPage from './pages/EnvPage.vue'
 import LogPage from './pages/LogPage.vue'
@@ -19,6 +20,7 @@ export function createUserRouter(base: string): Router {
       { path: '/edit.html', name: 'edit', component: SiteFormPage },
       { path: '/env.html', name: 'env', component: EnvPage },
       { path: '/log.html', name: 'log', component: LogPage },
+      { path: '/applog.html', name: 'app-log', component: AppLogPage },
       { path: '/ref.html', name: 'ref', component: DeployRefPage },
       { path: '/settings.html', name: 'settings', component: SettingsPage },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },

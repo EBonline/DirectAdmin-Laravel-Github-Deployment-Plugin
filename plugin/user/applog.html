@@ -1,0 +1,4 @@
+#!/bin/sh
+# DirectAdmin runs this file for /CMD_PLUGINS/<plugin folder>/applog.html
+D=$(cd "$(dirname "$0")/.." && pwd -P)
+exec /usr/local/bin/php -c "$D/php.ini" "$D/app/user.php" applog
