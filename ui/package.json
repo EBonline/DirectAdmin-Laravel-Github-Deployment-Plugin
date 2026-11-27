@@ -1,7 +1,7 @@
 {
   "name": "laravel-github-deploy-ui",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "Vue interface of the Laravel Github deploy DirectAdmin plugin. Builds into ../plugin/images.",
   "engines": {
